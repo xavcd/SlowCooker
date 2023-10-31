@@ -1,43 +1,79 @@
 #include <Arduino.h>
 #include <ESP8266WiFi.h>
 #include <ESP8266WebServer.h>
+#include <LittleFS.h>
 
 ESP8266WebServer httpd(80);
-double tempMijoteuse = 0.00;
-byte decimalAmount = 2;
-String htmlRoot = "";
+double tempMijoteuse = 25.00;
+byte nombreDecimal = 2;
 
 // Déclaration des méthodes
-void HandleRoot();
 void ReadTemp();
+void HandleFileRequest();
+String GetContentType(String);
+
 
 void setup()
 {
-  Serial.begin(115200);
-  Serial.println("Creation du AP...");
-  WiFi.softAP("xavcd", "Toto123!");
+    Serial.begin(115200);
+    Serial.println("Creation du AP...");
 
-  Serial.println(WiFi.softAPIP());
+    WiFi.softAP("Xavcd", "Toto123!");
+    
+    Serial.println(WiFi.softAPIP());
 
-  httpd.on("/", HandleRoot);
-  httpd.begin();
+    LittleFS.begin();
+
+    httpd.on("/getTemperature", HTTP_GET, []() {
+        String response = "{\"temperature\": " + String(tempMijoteuse, nombreDecimal) + "}";
+        httpd.send(200, "application/json", response);
+    });
+    httpd.onNotFound(HandleFileRequest);
+    httpd.begin();
+
+
+
+    Serial.println("Setup done!");
 }
 
 void loop() 
 {
-    ReadTemp();
+    //ReadTemp(); Uncomment when plugged into crockpot
     httpd.handleClient(); // Appeler le plus souvent possible
 }
 
-void HandleRoot()
+String GetContentType(String filename)
 {
-    htmlRoot =  "<html>" +
-    htmlRoot +=     "<body>" +
-    htmlRoot +=         "Temperature: " + String(tempMijoteuse, decimalAmount) + 
-    htmlRoot +=     "</body>" +
-    htmlRoot += "</html>";
-  
-    httpd.send(200, "text/html", htmlRoot);
+    struct Mime
+    {
+        String extension, type;
+    } mimeType[] = {
+        {".html", "text/html"}};
+
+    for (unsigned int i = 0; i < sizeof(mimeType) / sizeof(Mime); i++)
+    {
+        if (filename.endsWith(mimeType[i].extension))
+            return mimeType[i].type;
+    }
+
+    return "application/octet-stream";
+}
+
+void HandleFileRequest()
+{
+  String filename = httpd.uri();
+
+  if (filename.endsWith("/"))
+    filename = "index.html";
+
+  if (LittleFS.exists(filename))
+  {
+    File file = LittleFS.open(filename, "r");
+    httpd.streamFile(file, GetContentType(filename));
+    file.close();
+  }
+  else
+    httpd.send(404, "text/plain", "404 : Not Found");
 }
 
 void ReadTemp() 

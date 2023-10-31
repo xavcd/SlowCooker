@@ -1,0 +1,32 @@
+<!DOCTYPE html>
+<html>
+  <body>
+    <p id="temperature">Temperature: Updating...</p>
+
+    <script>
+      function updateTemperature() {
+        var temperatureElement = document.getElementById("temperature");
+        
+        var xhr = new XMLHttpRequest();
+        xhr.open("GET", "/getTemperature", true);
+
+        xhr.onreadystatechange = function () {
+          if (xhr.readyState == 4 && xhr.status == 200) {
+            var responseData = JSON.parse(xhr.responseText);
+            var tempMijoteuse = responseData.temperature;
+            var decimalAmount = 2;
+
+            temperatureElement.innerHTML =
+              "Temperature: " +
+              tempMijoteuse.toFixed(decimalAmount) +
+              "°C";
+          }
+        };
+
+        xhr.send();
+      }
+
+      setInterval(updateTemperature, 1000);
+    </script>
+  </body>
+</html>
