@@ -15,7 +15,7 @@ bool currentHeatCycleHandled = false;
 PID PIDcontroller(&tempMijoteuse, &heatPercent, &targetTemp, Kp, Ki, Kd, DIRECT);
 
 const int maxHeatPercent = 100;
-unsigned long windowStartTime;
+unsigned long windowStartTime, expectedHeatCycle = 0ul;
 
 // Déclaration des méthodes
 void ReadTemp();
@@ -46,9 +46,11 @@ void setup()
     windowStartTime = millis();
     PIDcontroller.SetOutputLimits(0, maxHeatPercent);
     PIDcontroller.SetMode(AUTOMATIC);
-    PIDcontroller.SetSampleTime(1000); // Cycle d'une seconde.
+    PIDcontroller.SetSampleTime(1250);
 
-    targetTemp = 43.00;
+    pinMode(D1, OUTPUT);
+    digitalWrite(D1, LOW);
+    targetTemp = 43.60;
 
     Serial.println("Setup done!");
 }
@@ -56,12 +58,13 @@ void setup()
 void loop() 
 {
     // Lire la température
-    //ReadTemp(); Uncomment when plugged into crockpot
+    ReadTemp(); 
 
     // Kill switch si la température est trop proche de 50
     if (tempMijoteuse > 49.00)
     {
-        //digitalWrite(D1, LOW); // Désactiver le relais de chauffage.
+        digitalWrite(D1, LOW); // Désactiver le relais de chauffage.
+        Serial.println("Turned killswitch on. Press reset button to restart.");
         while(true) {}
     }
 
@@ -106,7 +109,8 @@ void HandleFileRequest()
 
 void ReadTemp() 
 {
-    if (millis() - lastTempRead > 100ul)
+    // Éviter de lire la température trop souvent pour ne pas faire de conflit avec le wifi.
+    if (millis() - lastTempRead > 100ul)  
     {
         lastTempRead = millis();
         int input = analogRead(A0);
@@ -120,32 +124,38 @@ void ReadTemp()
 void ComputePID()
 {
     PIDcontroller.Compute();
+    
+    if ((millis() - lastPIDCycle <= expectedHeatCycle) && !currentHeatCycleHandled)
+    {
+        currentHeatCycleHandled = true;
+        if (digitalRead(D1) == LOW)
+        {
+            digitalWrite(D1, HIGH); // Activer l'élément chauffant.
+            // Serial.println("Turned relay on."); // Debug
+        }
+    }
+    else if ((millis() - lastPIDCycle >= expectedHeatCycle) && heatPercent != 100.00 && currentHeatCycleHandled)
+    {
+        currentHeatCycleHandled = false;
+        if (digitalRead(D1) == HIGH)
+        {
+            digitalWrite(D1, LOW); // Désactiver l'élément chauffant.
+            // Serial.println("Turned relay off."); // Debug
+        }
+    }
 
-    // Déterminer si le cycle précédent est terminé.
-    if (millis() - lastPIDCycle >= 1000)
+    if (millis() - lastPIDCycle >= 1000ul)
     {
         lastPIDCycle = millis();
+        expectedHeatCycle = heatPercent * 10ul;
         Serial.print("Température courante : ");
         Serial.print(tempMijoteuse);
         Serial.print("\t\t Pourcentage de chauffage : ");
-        Serial.print(heatPercent);
+        Serial.println(heatPercent);
         /* Simulation très simple pour tester le PID Controller
         tempMijoteuse += 5 * (heatPercent / 100);
         if (heatPercent == 0.00)
             tempMijoteuse -= 0.5;
         */
-    }
-
-    unsigned long expectedHeatCycle = heatPercent * 10ul;
-
-    if ((millis() - lastPIDCycle <= expectedHeatCycle) && !currentHeatCycleHandled)
-    {
-        currentHeatCycleHandled = true;
-        // digitalWrite(D1, HIGH); // Activer l'élément chauffant.
-    }
-    else if ((millis() - lastPIDCycle >= expectedHeatCycle) && currentHeatCycleHandled)
-    {
-        currentHeatCycleHandled = false;
-        // digitalWrite(D1, LOW); // Désactiver l'élément chauffant.
     }
 }
