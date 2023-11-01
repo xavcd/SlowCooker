@@ -2,14 +2,25 @@
 #include <ESP8266WiFi.h>
 #include <ESP8266WebServer.h>
 #include <LittleFS.h>
+#include <PID_v1.h>
 
 ESP8266WebServer httpd(80);
-double tempMijoteuse = 25.00;
+
+double targetTemp, tempMijoteuse, heatPercent;
+double Kp = 25.00, Ki = 0.00, Kd = 43.00;
+unsigned long lastTempRead = 0ul, lastPIDCycle = 0ul;
 byte nombreDecimal = 2;
+bool currentHeatCycleHandled = false;
+
+PID PIDcontroller(&tempMijoteuse, &heatPercent, &targetTemp, Kp, Ki, Kd, DIRECT);
+
+const int maxHeatPercent = 100;
+unsigned long windowStartTime;
 
 // Déclaration des méthodes
 void ReadTemp();
 void HandleFileRequest();
+void ComputePID();
 String GetContentType(String);
 
 
@@ -31,14 +42,31 @@ void setup()
     httpd.onNotFound(HandleFileRequest);
     httpd.begin();
 
+    // Initialiser le PID
+    windowStartTime = millis();
+    PIDcontroller.SetOutputLimits(0, maxHeatPercent);
+    PIDcontroller.SetMode(AUTOMATIC);
+    PIDcontroller.SetSampleTime(1000); // Cycle d'une seconde.
 
+    targetTemp = 43.00;
 
     Serial.println("Setup done!");
 }
 
 void loop() 
 {
+    // Lire la température
     //ReadTemp(); Uncomment when plugged into crockpot
+
+    // Kill switch si la température est trop proche de 50
+    if (tempMijoteuse > 49.00)
+    {
+        //digitalWrite(D1, LOW); // Désactiver le relais de chauffage.
+        while(true) {}
+    }
+
+    ComputePID();
+
     httpd.handleClient(); // Appeler le plus souvent possible
 }
 
@@ -78,9 +106,46 @@ void HandleFileRequest()
 
 void ReadTemp() 
 {
-    int input = analogRead(A0);
-    double voltage = input * 5.0 / 1023.0;
-    double resistance = 10000.0 * voltage / (5.0 - voltage);
-    double tempKelvin = 1.0 / (1.0 / 298.15 + log(resistance / 10000.0) / 3977.0); // B (beta) = 3977
-    tempMijoteuse = tempKelvin - 273.15;
+    if (millis() - lastTempRead > 100ul)
+    {
+        lastTempRead = millis();
+        int input = analogRead(A0);
+        double voltage = input * 5.0 / 1023.0;
+        double resistance = 10000.0 * voltage / (5.0 - voltage);
+        double tempKelvin = 1.0 / (1.0 / 298.15 + log(resistance / 10000.0) / 3977.0);
+        tempMijoteuse = tempKelvin - 273.15; // Température en celsius
+    }
+}
+
+void ComputePID()
+{
+    PIDcontroller.Compute();
+
+    // Déterminer si le cycle précédent est terminé.
+    if (millis() - lastPIDCycle >= 1000)
+    {
+        lastPIDCycle = millis();
+        Serial.print("Température courante : ");
+        Serial.print(tempMijoteuse);
+        Serial.print("\t\t Pourcentage de chauffage : ");
+        Serial.print(heatPercent);
+        /* Simulation très simple pour tester le PID Controller
+        tempMijoteuse += 5 * (heatPercent / 100);
+        if (heatPercent == 0.00)
+            tempMijoteuse -= 0.5;
+        */
+    }
+
+    unsigned long expectedHeatCycle = heatPercent * 10ul;
+
+    if ((millis() - lastPIDCycle <= expectedHeatCycle) && !currentHeatCycleHandled)
+    {
+        currentHeatCycleHandled = true;
+        // digitalWrite(D1, HIGH); // Activer l'élément chauffant.
+    }
+    else if ((millis() - lastPIDCycle >= expectedHeatCycle) && currentHeatCycleHandled)
+    {
+        currentHeatCycleHandled = false;
+        // digitalWrite(D1, LOW); // Désactiver l'élément chauffant.
+    }
 }
