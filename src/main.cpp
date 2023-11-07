@@ -3,11 +3,12 @@
 #include <ESP8266WebServer.h>
 #include <LittleFS.h>
 #include <PID_v1.h>
+#include <deque>
 
 ESP8266WebServer httpd(80);
 
 double targetTemp, tempMijoteuse, heatPercent;
-double Kp = 25.00, Ki = 0.00, Kd = 43.00;
+double Kp = 25.00, Ki = 1.00, Kd = 43.00;
 unsigned long lastTempRead = 0ul, lastPIDCycle = 0ul;
 byte nombreDecimal = 2;
 bool currentHeatCycleHandled = false;
@@ -16,6 +17,10 @@ PID PIDcontroller(&tempMijoteuse, &heatPercent, &targetTemp, Kp, Ki, Kd, DIRECT)
 
 const int maxHeatPercent = 100;
 unsigned long windowStartTime, expectedHeatCycle = 0ul;
+
+std::deque<double> tempQueue2min;
+std::deque<double> tempQueue5min;
+double tempMin2, tempMax2, tempMin5, tempMax5;
 
 // Déclaration des méthodes
 void ReadTemp();
@@ -36,7 +41,12 @@ void setup()
     LittleFS.begin();
 
     httpd.on("/getTemperature", HTTP_GET, []() {
-        String response = "{\"temperature\": " + String(tempMijoteuse, nombreDecimal) + "}";
+        String response = "{\"temperature\": " + String(tempMijoteuse, nombreDecimal) + ", " + 
+                          "\"tempMin2\": " + String(tempMin2, nombreDecimal) + ", " + 
+                          "\"tempMax2\": " + String(tempMax2, nombreDecimal) + ", " +
+                          "\"tempMin5\": " + String(tempMin5, nombreDecimal) + ", " + 
+                          "\"tempMax5\": " + String(tempMax5, nombreDecimal) + ", " +
+                          "}";
         httpd.send(200, "application/json", response);
     });
     httpd.onNotFound(HandleFileRequest);
@@ -50,7 +60,7 @@ void setup()
 
     pinMode(D1, OUTPUT);
     digitalWrite(D1, LOW);
-    targetTemp = 43.60;
+    targetTemp = 43;
 
     Serial.println("Setup done!");
 }
@@ -152,6 +162,46 @@ void ComputePID()
         Serial.print(tempMijoteuse);
         Serial.print("\t\t Pourcentage de chauffage : ");
         Serial.println(heatPercent);
+        // Ajouter aux queues respectives la température lu
+        if (tempQueue2min.size() < 120)
+            tempQueue2min.push_back(tempMijoteuse);
+        else if (tempQueue2min.size() == 120)
+        {
+            tempQueue2min.pop_front();
+            tempQueue2min.push_back(tempMijoteuse);
+        }
+
+        if (tempQueue5min.size() < 300)
+            tempQueue5min.push_back(tempMijoteuse);
+        else if (tempQueue5min.size() == 300)
+        {
+            tempQueue5min.pop_front();
+            tempQueue5min.push_back(tempMijoteuse);
+        }
+
+        // Update les valeurs des queues
+        tempMin2 = 0.00;
+        tempMax2 = 0.00;
+        for (int i = 0; i < tempQueue2min.size(); i++)
+        {
+            double currentValue = tempQueue2min.at(i);
+            if (currentValue < tempMin2)
+                tempMin2 = currentValue;
+            if (currentValue > tempMax2)
+                tempMax2 = currentValue;
+        }
+
+        tempMin5 = 0.00;
+        tempMax5 = 0.00;
+        for (int i = 0; i < tempQueue5min.size(); i++)
+        {
+            double currentValue = tempQueue5min.at(i);
+            if (currentValue < tempMin5)
+                tempMin5 = currentValue;
+            if (currentValue > tempMax5)
+                tempMax5 = currentValue;
+        }
+
         /* Simulation très simple pour tester le PID Controller
         tempMijoteuse += 5 * (heatPercent / 100);
         if (heatPercent == 0.00)

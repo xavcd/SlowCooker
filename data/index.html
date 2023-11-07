@@ -1,27 +1,39 @@
 <!DOCTYPE html>
 <html>
   <body>
-    <p id="temperature">Temperature: Updating...</p>
+    <p id="current-temperature">Temperature: Updating...</p>
+
 
     <script>
       function updateTemperature() {
-        var temperatureElement = document.getElementById("temperature");
+        var temperatureElement = document.getElementById("current-temperature");
+        var tempMin2Element = document.getElementById("min-temp-2");
+        var tempMax2Element = document.getElementById("max-temp-2");
+        var tempMin5Element = document.getElementById("min-temp-5");
+        var tempMax5Element = document.getElementById("max-temp-5");
         
-        var xhr = new XMLHttpRequest();
-        xhr.open("GET", "/getTemperature", true);
+        var xml = new XMLHttpRequest();
+        xml.open("GET", "/getTemperature", true);
 
-        xhr.onreadystatechange = function () {
-          if (xhr.readyState == 4 && xhr.status == 200) {
-            var responseData = JSON.parse(xhr.responseText);
+        xml.onreadystatechange = function () {
+          if (xml.readyState == 4 && xml.status == 200) {
+            var responseData = JSON.parse(xml.responseText);
             var tempMijoteuse = responseData.temperature;
-            var decimalAmount = 2;
+            var tempMin2 = responseData.tempMin2;
+            var tempMax2 = responseData.tempMax2;
+            var tempMin5 = responseData.tempMin5;
+            var tempMax5 = responseData.tempMax5;
+            var decimalCount = 2;
 
-            temperatureElement.innerHTML =
-              "Temperature: " + tempMijoteuse.toFixed(decimalAmount) + "°C";
+            temperatureElement.innerHTML = 
+                toString(tempMijoteuse.toFixed(decimalCount)) + "°C";
+            tempMin2Element.innerHTML = toString(tempMin2.toFixed(decimalCount)) + "°C";
+            tempMax2Element.innerHTML = toString(tempMax2.toFixed(decimalCount)) + "°C";
+            tempMin5Element.innerHTML = toString(tempMin5.toFixed(decimalCount)) + "°C";
+            tempMax5Element.innerHTML = toString(tempMax5.toFixed(decimalCount)) + "°C";
           }
         };
-
-        xhr.send();
+        xml.send();
       }
 
       setInterval(updateTemperature, 1000);
