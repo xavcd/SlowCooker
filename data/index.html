@@ -1,14 +1,76 @@
 <!DOCTYPE html>
 <html>
-  <body>
-    <p id="temperature">Temperature: Updating...</p>
+  <body style="font-family: 'Arial'; justify-self: center; margin-left: auto; margin-right: auto; background-color: #35363A; color: white; width: 65vw; margin-bottom: 30px;">
+    <div style="width: 100%; max-width: 100%; display: flex; flex-wrap: wrap;">
+      <div style="flex: 0 0 auto; width: 100%;">
+        <h2 style="justify-self: center; margin-left: auto; margin-right: auto; width:fit-content;">Let him cook!</h2>
+      </div>
+      <div style="flex: 0 0 auto; width: 50%;">
+        <p style="padding-left: 11vw;"><span style="font-weight: bold;">Current: </span><span id="current-temperature">Updating...</span></p>
+      </div>
+      <div style="flex: 0 0 auto; width: 50%;">
+        <p style="padding-left: 12vw;"><span style="font-weight: bold;">Time in optimal range: </span><span id="time-since-optimal">Updating...</span></p>
+      </div>
+    </div>
+    <div style="width: 100%; max-width: 100%; display: flex; flex-wrap: wrap; margin-top: 20px;">
+      <table style="width: 100%; border: 1px solid white;">
+        <thead>
+          <tr>
+            <th></th>
+            <th>Lowest Temperature</th>
+            <th>Highest Temperature</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <th>Last 2 Minutes</th>
+            <td style="font-style: italic;"><span id="min-temp-2">Updating...</span></td>
+            <td style="font-style: italic;"><span id="max-temp-2">Updating...</span></td>
+          </tr>
+          <tr>
+            <th>Last 5 Minutes</th>
+            <td style="font-style: italic;"><span id="min-temp-5">Updating...</span></td>
+            <td style="font-style: italic;"><span id="max-temp-5">Updating...</span></td>
+          </tr>
+        </tbody>
+      </table>
+      <div style="width: 100%; margin-top: 20px;">
+        <button>Stop</button>
+      </div>
+    </div>
+
+    <style>
+      th {
+        font-weight: bold;
+        border: 1px solid white;
+        padding: 15px;
+        font-size: 18px;
+      }
+      td {
+        font-style: italic;
+        border: 1px solid white;
+        padding: 15px;
+      }
+      button {
+        justify-self: center;
+        margin-left: auto;
+        margin-right: auto;
+        display: flex;
+        padding-top: 5px;
+        padding-bottom: 5px;
+        padding-left: 20px;
+        padding-right: 20px;
+        font-weight: bold;
+        font-size: 18;
+      }
+    </style>
 
     <script>
       function updateTemperature() {
-        var temperatureElement = document.getElementById("temperature");
+        var temperatureElement = document.getElementById("current-temperature");
         
         var xhr = new XMLHttpRequest();
-        xhr.open("GET", "/getTemperature", true);
+        xhr.open("GET", "/getTemperature", true);x
 
         xhr.onreadystatechange = function () {
           if (xhr.readyState == 4 && xhr.status == 200) {
@@ -16,8 +78,7 @@
             var tempMijoteuse = responseData.temperature;
             var decimalAmount = 2;
 
-            temperatureElement.innerHTML =
-              "Temperature: " + tempMijoteuse.toFixed(decimalAmount) + "°C";
+            temperatureElement.innerHTML = toString(tempMijoteuse.toFixed(decimalAmount)) + "°C";
           }
         };
 
