@@ -1,16 +1,22 @@
 <!DOCTYPE html>
 <html>
+  <head>
+    <meta charset="UTF-8">
+  </head>
   <body style="font-family: 'Arial'; justify-self: center; margin-left: auto; margin-right: auto; background-color: #35363A; color: white; width: 65vw; margin-bottom: 30px;">
     <div style="width: 100%; max-width: 100%; display: flex; flex-wrap: wrap;">
-      <div style="flex: 0 0 auto; width: 100%;">
-        <h2 style="justify-self: center; margin-left: auto; margin-right: auto; width:fit-content;">Let him cook!</h2>
-      </div>
-      <div style="flex: 0 0 auto; width: 50%;">
-        <p style="padding-left: 11vw;"><span style="font-weight: bold;">Current: </span><span id="current-temperature">Updating...</span></p>
-      </div>
-      <div style="flex: 0 0 auto; width: 50%;">
-        <p style="padding-left: 12vw;"><span style="font-weight: bold;">Time in optimal range: </span><span id="time-since-optimal">Updating...</span></p>
-      </div>
+        <div style="flex: 0 0 auto; width: 100%;">
+          <h2 style="justify-self: center; margin-left: auto; margin-right: auto; width:fit-content;">Let him cook!</h2>
+        </div>
+        <div style="flex: 0 0 auto; width: 50%;">
+          <p style="padding-left: 11vw;"><span style="font-weight: bold;">Current: </span><span id="current-temperature">Updating...</span></p>
+        </div>
+        <div style="flex: 0 0 auto; width: 50%;">
+          <p style="padding-left: 11vw;"><span style="font-weight: bold;">Percentage: </span><span id="heat-percentage">Updating...</span></p>
+        </div>
+        <div style="flex: 0 0 auto; width: 100%;">
+          <p style="justify-self: center; margin-left: auto; margin-right: auto; width:fit-content;"><span style="font-weight: bold;">Time in optimal range: </span><span id="time-since-optimal">Updating...</span></p>
+        </div>
     </div>
     <div style="width: 100%; max-width: 100%; display: flex; flex-wrap: wrap; margin-top: 20px;">
       <table style="width: 100%; border: 1px solid white;">
@@ -35,7 +41,7 @@
         </tbody>
       </table>
       <div style="width: 100%; margin-top: 20px;">
-        <button>Stop</button>
+        <button id="on-off-button" onclick="turnOnOff()">Stop</button>
       </div>
     </div>
 
@@ -66,36 +72,62 @@
     </style>
 
     <script>
-      function updateTemperature() {
-        var temperatureElement = document.getElementById("current-temperature");
-
-        var xhr = new XMLHttpRequest();
-        xhr.open("GET", "/getTemperature", true);x
-
-        var tempMin2Element = document.getElementById("min-temp-2");
-        var tempMax2Element = document.getElementById("max-temp-2");
-        var tempMin5Element = document.getElementById("min-temp-5");
-        var tempMax5Element = document.getElementById("max-temp-5");
-
-        xml.onreadystatechange = function () {
-          if (xml.readyState == 4 && xml.status == 200) {
-            var responseData = JSON.parse(xml.responseText);
-            var tempMijoteuse = responseData.temperature;
-            var tempMin2 = responseData.tempMin2;
-            var tempMax2 = responseData.tempMax2;
-            var tempMin5 = responseData.tempMin5;
-            var tempMax5 = responseData.tempMax5;
-            var decimalCount = 2;
-
-            temperatureElement.innerHTML = toString(tempMijoteuse.toFixed(decimalCount)) + "°C";
-            tempMin2Element.innerHTML = toString(tempMin2.toFixed(decimalCount)) + "°C";
-            tempMax2Element.innerHTML = toString(tempMax2.toFixed(decimalCount)) + "°C";
-            tempMin5Element.innerHTML = toString(tempMin5.toFixed(decimalCount)) + "°C";
-            tempMax5Element.innerHTML = toString(tempMax5.toFixed(decimalCount)) + "°C";
-          };
-          xml.send();
+        function turnOnOff() {
+            var button = document.getElementById("on-off-button");
+            var xml = new XMLHttpRequest();
+            if (button.innerHTML == "Stop")
+            {
+                button.innerHTML = "Start";
+                xml.open("GET", "/setState", false);
+            }
+            else if (button.innerHTML == "Start")
+            {
+                button.innerHTML = "Stop";
+                xml.open("GET", "/setState", false);
+            }
+            xml.send();
         }
-      }
+        function updateTemperature() {
+            var temperatureElement = document.getElementById("current-temperature");
+
+            var xml = new XMLHttpRequest();
+            xml.open("GET", "/getTemperature", false);
+
+            xml.onreadystatechange = function () {
+                var tempMin2Element = document.getElementById("min-temp-2");
+                var tempMax2Element = document.getElementById("max-temp-2");
+                var tempMin5Element = document.getElementById("min-temp-5");
+                var tempMax5Element = document.getElementById("max-temp-5");
+                var timeSinceOptimal = document.getElementById("time-since-optimal");
+                var heatPercentageElement = document.getElementById("heat-percentage");
+
+                var responseData = JSON.parse(xml.responseText);
+                var tempMijoteuse = responseData.temperature;
+                var tempMin2 = responseData.tempMin2;
+                var tempMax2 = responseData.tempMax2;
+                var tempMin5 = responseData.tempMin5;
+                var tempMax5 = responseData.tempMax5;
+                var optimalTime = responseData.optimalTime;
+                var heatPercentage = responseData.heatPercent;
+                var decimalCount = 2;
+
+                var optimalTimeHours = Math.floor(optimalTime / 3600);
+                var optimalTimeMin = Math.floor((optimalTime / 60) % 60);
+                var optimalTimeSec = optimalTime % 60;
+
+                temperatureElement.innerHTML = tempMijoteuse.toFixed(decimalCount).toString() + "°C";
+                tempMin2Element.innerHTML = tempMin2.toFixed(decimalCount).toString() + "°C";
+                tempMax2Element.innerHTML = tempMax2.toFixed(decimalCount).toString() + "°C";
+                tempMin5Element.innerHTML = tempMin5.toFixed(decimalCount).toString() + "°C";
+                tempMax5Element.innerHTML = tempMax5.toFixed(decimalCount).toString() + "°C";
+                timeSinceOptimal.innerHTML = optimalTimeHours.toString().padStart(2, '0') + ":" + 
+                                             optimalTimeMin.toString().padStart(2, '0') + ":" + 
+                                             optimalTimeSec.toString().padStart(2, '0');
+                heatPercentageElement.innerHTML = heatPercentage.toFixed(decimalCount).toString() + "%";
+            }
+            xml.send();
+        }
+        
       setInterval(updateTemperature, 1000);
     </script>
   </body>

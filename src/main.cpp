@@ -4,14 +4,15 @@
 #include <LittleFS.h>
 #include <PID_v1.h>
 #include <deque>
+#include <float.h>
 
 ESP8266WebServer httpd(80);
 
 double targetTemp, tempMijoteuse, heatPercent;
-double Kp = 25.00, Ki = 1.00, Kd = 43.00;
-unsigned long lastTempRead = 0ul, lastPIDCycle = 0ul;
+double Kp = 40.00, Ki = 1.00, Kd = 5.00;
+unsigned long lastTempRead = 0ul, lastPIDCycle = 0ul, lastTempCheck = 0ul, secondsInTargetTemp = 0ul;
 byte nombreDecimal = 2;
-bool currentHeatCycleHandled = false;
+bool currentHeatCycleHandled = false, isTempGood = false, isOn = true;
 
 PID PIDcontroller(&tempMijoteuse, &heatPercent, &targetTemp, Kp, Ki, Kd, DIRECT);
 
@@ -40,13 +41,22 @@ void setup()
 
     LittleFS.begin();
 
+    httpd.on("/setState", HTTP_GET, []() {
+        isOn = !isOn;
+        heatPercent = 0.00;
+        String response = "OK";
+        httpd.send(22, "text/plain", response);
+        Serial.println(isOn ? "On." : "Off.");
+    });
+
     httpd.on("/getTemperature", HTTP_GET, []() {
         String response = "{\"temperature\": " + String(tempMijoteuse, nombreDecimal) + ", " + 
                           "\"tempMin2\": " + String(tempMin2, nombreDecimal) + ", " + 
                           "\"tempMax2\": " + String(tempMax2, nombreDecimal) + ", " +
                           "\"tempMin5\": " + String(tempMin5, nombreDecimal) + ", " + 
-                          "\"tempMax5\": " + String(tempMax5, nombreDecimal) + ", " +
-                          "}";
+                          "\"tempMax5\": " + String(tempMax5, nombreDecimal) + ", " + 
+                          "\"optimalTime\": " + secondsInTargetTemp + ", " +
+                          "\"heatPercent\": " + heatPercent + "}";
         httpd.send(200, "application/json", response);
     });
     httpd.onNotFound(HandleFileRequest);
@@ -81,6 +91,15 @@ void loop()
     ComputePID();
 
     httpd.handleClient(); // Appeler le plus souvent possible
+
+    if (millis() - 1000ul >= lastTempCheck)
+    {
+        lastTempCheck = millis();
+        if (isTempGood)
+            secondsInTargetTemp++;
+        else
+            secondsInTargetTemp = 0ul;
+    }
 }
 
 String GetContentType(String filename)
@@ -120,7 +139,7 @@ void HandleFileRequest()
 void ReadTemp() 
 {
     // Éviter de lire la température trop souvent pour ne pas faire de conflit avec le wifi.
-    if (millis() - lastTempRead > 100ul)  
+    if (millis() - lastTempRead > 100ul || lastTempRead == 0)
     {
         lastTempRead = millis();
         int input = analogRead(A0);
@@ -128,30 +147,47 @@ void ReadTemp()
         double resistance = 10000.0 * voltage / (5.0 - voltage);
         double tempKelvin = 1.0 / (1.0 / 298.15 + log(resistance / 10000.0) / 3977.0);
         tempMijoteuse = tempKelvin - 273.15; // Température en celsius
+
+        if (tempMijoteuse > 41.00 && tempMijoteuse < 45.00)
+            isTempGood = true;
+        else
+            isTempGood = false;
     }
 }
 
 void ComputePID()
 {
-    PIDcontroller.Compute();
-    
-    if ((millis() - lastPIDCycle <= expectedHeatCycle) && !currentHeatCycleHandled)
+    if (isOn)
     {
-        currentHeatCycleHandled = true;
-        if (digitalRead(D1) == LOW)
+        PIDcontroller.Compute();
+
+        if ((millis() - lastPIDCycle <= expectedHeatCycle) && !currentHeatCycleHandled)
         {
-            digitalWrite(D1, HIGH); // Activer l'élément chauffant.
-            // Serial.println("Turned relay on."); // Debug
+            currentHeatCycleHandled = true;
+            if (digitalRead(D1) == LOW)
+            {
+                digitalWrite(D1, HIGH); // Activer l'élément chauffant.
+                // Serial.println("Turned relay on."); // Debug
+            }
+        }
+        else if ((millis() - lastPIDCycle >= expectedHeatCycle) && heatPercent != 100.00 && currentHeatCycleHandled)
+        {
+            currentHeatCycleHandled = false;
+            if (digitalRead(D1) == HIGH)
+            {
+                digitalWrite(D1, LOW); // Désactiver l'élément chauffant.
+                // Serial.println("Turned relay off."); // Debug
+            }
+        }
+        else if ((millis() - lastPIDCycle >= expectedHeatCycle) && heatPercent == 100.00 && currentHeatCycleHandled)
+        {
+            currentHeatCycleHandled = false;
         }
     }
-    else if ((millis() - lastPIDCycle >= expectedHeatCycle) && heatPercent != 100.00 && currentHeatCycleHandled)
+    else if (!isOn)
     {
-        currentHeatCycleHandled = false;
         if (digitalRead(D1) == HIGH)
-        {
-            digitalWrite(D1, LOW); // Désactiver l'élément chauffant.
-            // Serial.println("Turned relay off."); // Debug
-        }
+            digitalWrite(D1, LOW);
     }
 
     if (millis() - lastPIDCycle >= 1000ul)
@@ -180,9 +216,9 @@ void ComputePID()
         }
 
         // Update les valeurs des queues
-        tempMin2 = 0.00;
-        tempMax2 = 0.00;
-        for (int i = 0; i < tempQueue2min.size(); i++)
+        tempMin2 = DBL_MAX; // S'assurer de mettre une valeur plus grande que ce qu'on obtiendra
+        tempMax2 = DBL_MIN; // S'assurer de mettre une valeur plus petite que ce qu'on obtiendra
+        for (unsigned int i = 0; i < tempQueue2min.size(); i++)
         {
             double currentValue = tempQueue2min.at(i);
             if (currentValue < tempMin2)
@@ -191,9 +227,9 @@ void ComputePID()
                 tempMax2 = currentValue;
         }
 
-        tempMin5 = 0.00;
-        tempMax5 = 0.00;
-        for (int i = 0; i < tempQueue5min.size(); i++)
+        tempMin5 = DBL_MAX;
+        tempMax5 = DBL_MIN;
+        for (unsigned int i = 0; i < tempQueue5min.size(); i++)
         {
             double currentValue = tempQueue5min.at(i);
             if (currentValue < tempMin5)
