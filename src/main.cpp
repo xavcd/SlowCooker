@@ -5,6 +5,12 @@
 #include <PID_v1.h>
 #include <deque>
 #include <float.h>
+#include <PubSubClient.h>
+
+// Pour les requêtes http
+#include <ESP8266WiFiMulti.h>
+#include <ESP8266HTTPClient.h>
+#include <WiFiClient.h>
 
 ESP8266WebServer httpd(80);
 
@@ -28,16 +34,39 @@ void ReadTemp();
 void HandleFileRequest();
 void ComputePID();
 String GetContentType(String);
+void callback(char*, byte*, unsigned int);
+void reconnect();
 
+ESP8266WiFiMulti wifi;
+const char* mqtt_server = "172.16.0.212";
+WiFiClient espClient;
+PubSubClient client(espClient);
+unsigned long lastMsg = 0;
+#define MSG_BUFFER_SIZE	(50)
+char msg[MSG_BUFFER_SIZE];
+int value = 0;
 
 void setup()
 {
     Serial.begin(115200);
     Serial.println("Creation du AP...");
 
-    WiFi.softAP("Xavcd", "Toto123!");
+    //WiFi.softAP("Xavcd", "Toto123!");
+    //Serial.println(WiFi.softAPIP());
+
+    // Open the mqtt server and setup to listen for callbacks
+    client.setServer(mqtt_server, 1883);
+    client.setCallback(callback);
     
-    Serial.println(WiFi.softAPIP());
+    wifi.addAP("DEPTI_2.4", "2021depTI");
+    while (wifi.run() != WL_CONNECTED)
+    {
+        Serial.println("Connecting...");
+        delay(5000);
+    }
+
+    Serial.print("\n\nIP: ");
+    Serial.println(WiFi.localIP());
 
     LittleFS.begin();
 
@@ -77,6 +106,10 @@ void setup()
 
 void loop() 
 {
+    if (!client.connected()) {
+        reconnect();
+    }
+
     // Lire la température
     ReadTemp(); 
 
@@ -100,6 +133,45 @@ void loop()
         else
             secondsInTargetTemp = 0ul;
     }
+    client.loop();
+}
+
+void reconnect() {
+  while (!client.connected()) {
+    Serial.print("Attempting MQTT connection...");
+    String clientId = "ESP8266Client-";
+    clientId += String(random(0xffff), HEX);
+    if (client.connect(clientId.c_str(), "pi", "pi")) {
+      Serial.println("connected");
+      //client.publish("outTopic", "hello world"); Envoyer un message pour annoncer la connection.
+      client.subscribe("yogourt/control");
+    } else {
+      Serial.print("failed, rc=");
+      Serial.print(client.state());
+      Serial.println(" Trying again in 3 seconds");
+      delay(3000);
+    }
+  }
+}
+
+void callback(char* topic, byte* payload, unsigned int length) {
+  Serial.print("Message arrived [");
+  Serial.print(topic);
+  Serial.print("] ");
+  payload[length] = 0;
+  Serial.println(String((char*)payload));
+  Serial.println();
+
+  if (String(topic) == "yogourt/control") {
+    if (String((char*)payload) == "off") {
+        isOn = false;
+        heatPercent = 0.00;
+    }
+    else if (String((char*)payload) == "on") {
+        isOn = true;
+    }
+  }
+
 }
 
 String GetContentType(String filename)
@@ -194,6 +266,10 @@ void ComputePID()
     {
         lastPIDCycle = millis();
         expectedHeatCycle = heatPercent * 10ul;
+        snprintf(msg, MSG_BUFFER_SIZE, "Temperature : %f °C", tempMijoteuse);
+        // Publier la température sur le "Topic"
+        client.publish("yogourt/temp", msg);
+
         Serial.print("Température courante : ");
         Serial.print(tempMijoteuse);
         Serial.print("\t\t Pourcentage de chauffage : ");
